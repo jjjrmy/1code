@@ -1,8 +1,9 @@
 "use client"
 
 import { useAtom } from "jotai"
-import { ChevronRight, Loader2 } from "lucide-react"
+import { ChevronRight, Copy, Loader2 } from "lucide-react"
 import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "../../../components/ui/button"
 import {
   Popover,
@@ -314,6 +315,27 @@ export const McpServersIndicator = memo(function McpServersIndicator({
                 {server.error && (
                   <div className="pl-10 pr-3 pb-1 text-[10px] text-red-500/80 truncate" title={server.error}>
                     {server.error}
+                  </div>
+                )}
+
+                {/* Auth instructions for needs-auth status */}
+                {server.status === "needs-auth" && (
+                  <div className="pl-10 pr-3 pb-2">
+                    <p className="text-[10px] text-muted-foreground mb-1.5">
+                      Run <code className="bg-muted px-1 rounded">claude /mcp</code> in terminal to authenticate
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="h-5 text-[10px] px-2"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigator.clipboard.writeText("claude /mcp")
+                        toast.success("Command copied!")
+                      }}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      Copy command
+                    </Button>
                   </div>
                 )}
 

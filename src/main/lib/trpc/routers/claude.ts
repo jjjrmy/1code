@@ -488,13 +488,24 @@ export const claudeRouter = router({
             }
 
             // Build final env - only add OAuth token if we have one
+            // When MCP servers are configured, DON'T set CLAUDE_CONFIG_DIR so the CLI
+            // uses the default ~/.claude/ and accesses the main keychain entry
+            // (Claude Code-credentials) which has OAuth tokens from terminal auth.
+            // When CLAUDE_CONFIG_DIR is set, CLI creates a separate keychain entry
+            // with a hash suffix, which won't have the MCP OAuth tokens.
             const finalEnv = {
               ...claudeEnv,
               ...(claudeCodeToken && {
                 CLAUDE_CODE_OAUTH_TOKEN: claudeCodeToken,
               }),
-              // Re-enable CLAUDE_CONFIG_DIR now that we properly map MCP configs
-              CLAUDE_CONFIG_DIR: isolatedConfigDir,
+              // Only set isolated config dir when NO MCP servers configured
+              ...(!mcpServersForSdk && { CLAUDE_CONFIG_DIR: isolatedConfigDir }),
+            }
+
+            if (mcpServersForSdk) {
+              console.log(`[claude] MCP servers configured - using default config dir for shared keychain access`)
+            } else {
+              console.log(`[claude] No MCP servers - using isolated config dir: ${isolatedConfigDir}`)
             }
 
             // Get bundled Claude binary path
@@ -1117,6 +1128,46 @@ export const claudeRouter = router({
       } catch (error) {
         console.error("[getMcpConfig] Error reading config:", error)
         return { mcpServers: [], projectPath: input.projectPath, error: String(error) }
+      }
+    }),
+
+  /**
+   * Get MCP servers configuration for all projects
+   * This allows showing all MCP servers in Settings grouped by project
+   */
+  getAllMcpConfigs: publicProcedure
+    .query(async () => {
+      const claudeJsonPath = path.join(os.homedir(), ".claude.json")
+
+      try {
+        const exists = await fs.stat(claudeJsonPath).then(() => true).catch(() => false)
+        if (!exists) {
+          return { projects: [] }
+        }
+
+        const configContent = await fs.readFile(claudeJsonPath, "utf-8")
+        const config = JSON.parse(configContent)
+
+        // Extract all projects that have mcpServers configured
+        const projects = Object.entries(config.projects || {})
+          .filter(([, projectConfig]: [string, any]) =>
+            projectConfig?.mcpServers && Object.keys(projectConfig.mcpServers).length > 0
+          )
+          .map(([projectPath, projectConfig]: [string, any]) => ({
+            projectPath,
+            mcpServers: Object.entries(projectConfig.mcpServers).map(
+              ([name, serverConfig]) => ({
+                name,
+                status: "pending" as const,
+                config: serverConfig as Record<string, unknown>,
+              })
+            ),
+          }))
+
+        return { projects }
+      } catch (error) {
+        console.error("[getAllMcpConfigs] Error reading config:", error)
+        return { projects: [], error: String(error) }
       }
     }),
 
